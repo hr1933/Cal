@@ -7,16 +7,21 @@
   <style>
     * {
       box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     body {
       margin: 0;
-      height: 100vh;
+      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       background: linear-gradient(135deg, #1f2937, #111827);
       font-family: Arial, sans-serif;
+      padding: 20px;
     }
 
     .calculator {
@@ -25,6 +30,7 @@
       border-radius: 16px;
       padding: 20px;
       box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+      margin-bottom: 20px;
     }
 
     #display {
@@ -38,6 +44,7 @@
       padding: 10px 12px;
       margin-bottom: 18px;
       color: #111827;
+      font-family: monospace;
     }
 
     .buttons {
@@ -53,12 +60,12 @@
       font-size: 1.2rem;
       font-weight: bold;
       cursor: pointer;
-      transition: 0.2s ease;
+      transition: 0.1s ease;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-      filter: brightness(1.05);
+    button:active {
+      transform: scale(0.95);
+      filter: brightness(0.9);
     }
 
     .number {
@@ -81,11 +88,18 @@
       color: white;
       grid-column: span 2;
     }
+
+    .footer {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      padding-bottom: 10px;
+    }
   </style>
 </head>
 <body>
   <div class="calculator">
-    <input id="display" type="text" disabled />
+    <input id="display" type="text" disabled value="0" />
 
     <div class="buttons">
       <button class="clear" data-action="clear">C</button>
@@ -113,51 +127,100 @@
     </div>
   </div>
 
+  <div class="footer">
+    ©1933保留所有权利
+  </div>
+
   <script>
     const display = document.getElementById("display");
     let expression = "";
+    let isEvaluated = false;
 
     function updateDisplay() {
       display.value = expression || "0";
     }
 
-    function appendValue(value) {
-      if (value === "." && expression.includes(".")) {
-        return;
+    function resetIfError() {
+      if (expression === "Error") {
+        expression = "";
+        isEvaluated = false;
       }
-      expression += value;
+    }
+
+    function appendValue(value) {
+      resetIfError();
+      
+      if (isEvaluated && !["+", "-", "*", "/"].includes(value)) {
+        expression = "";
+      }
+      isEvaluated = false;
+
+      if (value === ".") {
+        const parts = expression.split(/[\+\-\*\/]/);
+        const currentPart = parts[parts.length - 1];
+        if (currentPart.includes(".")) return;
+        if (currentPart === "") expression += "0";
+      }
+
+      if (expression === "0" && value !== ".") {
+        expression = value;
+      } else {
+        expression += value;
+      }
+      
       updateDisplay();
     }
 
     function handleOperator(operator) {
-      const lastChar = expression.slice(-1);
-
-      if (!expression || ["+", "-", "*", "/"].includes(lastChar)) {
+      resetIfError();
+      isEvaluated = false;
+      
+      if (!expression) {
+        if (operator === "-") expression = "-";
+        updateDisplay();
         return;
       }
 
-      expression += operator;
+      const lastChar = expression.slice(-1);
+      
+      if (["+", "-", "*", "/"].includes(lastChar)) {
+        expression = expression.slice(0, -1) + operator;
+      } else {
+        expression += operator;
+      }
+      
       updateDisplay();
     }
 
     function clearDisplay() {
       expression = "";
+      isEvaluated = false;
       updateDisplay();
     }
 
     function backspace() {
+      if (isEvaluated) {
+        clearDisplay();
+        return;
+      }
+      resetIfError();
       expression = expression.slice(0, -1);
       updateDisplay();
     }
 
     function calculate() {
+      resetIfError();
+      if (!expression) return;
+
       try {
-        const result = Function(`"use strict"; return (${expression})`)();
+        const safeExpression = expression.replace(/[^0-9+\-*/. ]/g, "");
+        const result = Function(`"use strict"; return (${safeExpression})`)();
 
         if (!Number.isFinite(result)) {
           expression = "Error";
         } else {
-          expression = Number.isInteger(result) ? String(result) : String(parseFloat(result.toFixed(10)));
+          expression = String(parseFloat(result.toFixed(10)));
+          isEvaluated = true;
         }
       } catch {
         expression = "Error";
@@ -167,29 +230,19 @@
     }
 
     document.querySelectorAll(".number").forEach(button => {
-      button.addEventListener("click", () => {
-        if (expression === "Error") {
-          expression = "";
-        }
-        appendValue(button.dataset.value);
-      });
+      button.addEventListener("click", () => appendValue(button.dataset.value));
     });
 
     document.querySelectorAll(".operator").forEach(button => {
       button.addEventListener("click", () => {
         const action = button.dataset.action;
-
         if (action === "backspace") {
           backspace();
-          return;
-        }
-
-        if (action === "clear") {
+        } else if (action === "clear") {
           clearDisplay();
-          return;
+        } else {
+          handleOperator(button.dataset.value);
         }
-
-        handleOperator(button.dataset.value);
       });
     });
 
